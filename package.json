@@ -1,0 +1,22 @@
+{
+  "name": "structured-clone-binary",
+  "version": "0.1.0",
+  "description": "Serializes data to a binary format using SCA.",
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc -p tsconfig.json && tslint -p tsconfig.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TimLuq/structured-clone-binary.git"
+  },
+  "keywords": [
+    "structured",
+    "clone",
+    "binary",
+    "serialize"
+  ],
+  "author": "TimLuq",
+  "license": "ISC"
+}
