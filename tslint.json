@@ -10,7 +10,8 @@
 	"max-classes-per-file":false,
 	"no-bitwise": false,
 	"variable-name": [true, "ban-keywords", "check-format", "allow-leading-underscore"],
-	"max-line-length": false
+	"max-line-length": false,
+        "space-before-function-paren": [true, {"anonymous": "always", "named": "never", "asyncArrow": "always"}]
     },
     "rulesDirectory": []
 }

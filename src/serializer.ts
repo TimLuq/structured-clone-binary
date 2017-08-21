@@ -61,6 +61,20 @@ function writeInteger(buffer: DataView | number[], value: number, offset?: numbe
     }
 }
 
+function filterMap<K, V>(filter: (entry: [K, V]) => boolean, map: Map<K, V>): Map<K, V> {
+    return new Map<K, V>((function* (it: IterableIterator<[K, V]>): IterableIterator<[K, V]> {
+        while (true) {
+            const res = it.next();
+            if (res.done) {
+                break;
+            }
+            if (filter(res.value)) {
+                yield res.value;
+            }
+        }
+    })(map.entries()));
+}
+
 type TSerialized<T extends any> = SCASerializerObjectBase<T> | null | undefined | boolean;
 type TSerializable<T extends any> = TSerialized<T> | string | {} | any[];
 
@@ -69,7 +83,7 @@ type TSerializable<T extends any> = TSerialized<T> | string | {} | any[];
  */
 class SCASerializerMemory {
     private _refCounter: number = 0;
-    private readonly _container = new Map<object | string, SCASerializerObjectBase<object | string>>();
+    private _container = new Map<object | string, SCASerializerObjectBase<object | string>>();
 
     public remember<T extends null>(obj: T): null;
     public remember<T extends undefined>(obj: T): undefined;
@@ -99,6 +113,16 @@ class SCASerializerMemory {
 
     public forceRemember<T extends object | string>(obj: T, val: SCASerializerObjectBase<T>): this {
         this._container.set(obj, val);
+        return this;
+    }
+
+    public cull(): this {
+        this._container = filterMap((entry) => Boolean(entry[1].getRef()), this._container);
+        return this;
+    }
+
+    public clear(): this {
+        this._container.clear();
         return this;
     }
 
@@ -543,7 +567,11 @@ export interface ISCASerializerOptions {
 
 export interface ISCASerializerBuffer {
     uint8array?: Uint8Array;
-    loopOffset?: number;
+}
+
+interface ISCAListeners {
+    flush?: Array<(serializer: SCASerializer) => any>;
+    write?: Array<(serializer: SCASerializer) => any>;
 }
 
 export class SCASerializer {
@@ -581,14 +609,19 @@ export class SCASerializer {
     private readonly _memory = new SCASerializerMemory();
     private readonly _stream: Array<SCASerializerObjectNumber | SCASerializerObjectBase<object> | null | undefined | boolean> = [];
     private readonly _options: ISCASerializerOptions;
+    private _cullable: boolean = false;
+
+    private readonly _listeners: ISCAListeners = {};
 
     public get options() {
         return this._options;
     }
 
-    constructor(data: any, options?: ISCASerializerOptions) {
+    constructor(options?: ISCASerializerOptions, ...data: any[]) {
         this._options = options || {};
-        this.cloneData(data);
+        for (const d of data) {
+            this.write(d);
+        }
     }
 
     public toArrayBuffer(): ArrayBuffer {
@@ -609,8 +642,15 @@ export class SCASerializer {
         if (!offset) {
             offset = 0;
         }
-        const origOffset = offset;
         const s = this._stream;
+        if (s.length === 0) {
+            return -1;
+        }
+        if (this._cullable) {
+            this._memory.cull();
+            this._cullable = false;
+        }
+        const origOffset = offset;
         const blen = buffer.byteLength;
         while (s.length) {
             if (blen <= offset) {
@@ -628,11 +668,57 @@ export class SCASerializer {
         return (offset - origOffset) || -1;
     }
 
-    protected cloneData(data: any) {
-        this._stream.push(this._memory.remember(data));
+    public flush(): this {
+        if (this._cullable) {
+            this._memory.cull();
+            this._cullable = false;
+        }
+
+        if (this._listeners.flush) {
+            for (const l of this._listeners.flush) {
+                l(this);
+            }
+        }
+        return this;
+    }
+
+    public write(...data: any[]): this {
+        let w = false;
+        for (const d of data) {
+            const writable: any = this._memory.remember(d);
+            if (typeof writable === "object" && !writable.getRef()) {
+                w = true;
+            }
+            this._stream.push(writable);
+        }
+        if (w) {
+            this._cullable = true;
+        }
+        if (data.length && this._listeners.write) {
+            for (const l of this._listeners.write) {
+                l(this);
+            }
+        }
+        return this;
+    }
+
+    public on(event: keyof ISCAListeners, listener: (serializer: SCASerializer) => any): this {
+        if (!this._listeners[event]) {
+            this._listeners[event] = [];
+        }
+        this._listeners[event].push(listener);
+        return this;
+    }
+
+    public off(event: keyof ISCAListeners, listener: (serializer: SCASerializer) => any): this {
+        if (this._listeners[event]) {
+            const i = this._listeners[event].indexOf(listener);
+            this._listeners[event].splice(i, 1);
+        }
+        return this;
     }
 }
 
 export default function scaSerialize(data: any): ArrayBuffer {
-    return new SCASerializer(data).toArrayBuffer();
+    return new SCASerializer(undefined, data).toArrayBuffer();
 }

@@ -31,6 +31,7 @@ class SCAUnserializerMemory {
 
 export interface ISCAUnserializerOptions {
     allowFunctions?: boolean;
+    verbosity?: number;
 }
 
 export interface ISCAUnserializerBuffer {
@@ -119,7 +120,9 @@ export class SCAUnserializer {
 
         const t = buffer.getUint8(offset);
 
-        console.log("Detected type 0x" + t.toString(16));
+        if (this._options.verbosity) {
+            console.log("Detected type 0x" + t.toString(16));
+        }
 
         if (checkType(t, "CONST")) {
             if (t === SCATYPE.FALSE) {
@@ -211,7 +214,9 @@ export class SCAUnserializer {
 
             if (checkType(t, "ARRAY_MIXED")) {
                 const { byteLength: blen, value: alen } = SCAUnserializer.decodeInt(buffer, offset + 1);
-                console.log("Creating a mixed array of length", alen);
+                if (this._options.verbosity) {
+                    console.log("Creating a mixed array of length", alen);
+                }
                 const rx: any[] = new Array(alen);
                 let totlen = blen + 1;
                 if (useCache) {
